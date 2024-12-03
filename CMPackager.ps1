@@ -507,10 +507,20 @@ Combines the output from Get-ChildItem with the Get-ExtensionAttribute function,
 				Add-LogContent "Downloading $ApplicationName from $URL"
 				$ProgressPreference = 'SilentlyContinue'
                 IF ($HTTPheaders) {
-				    $request = Invoke-WebRequest -Uri "$URL" -OutFile $DownloadFile -Headers $HTTPheaders
+				    IF ($UserAgent)  {            
+                        $request = Invoke-WebRequest -Uri "$URL" -OutFile $DownloadFile -Headers $HTTPheaders -UserAgent $UserAgent
+                    }
+                    else {
+                        $request = Invoke-WebRequest -Uri "$URL" -OutFile $DownloadFile -Headers $HTTPheaders
+                    }
                 }
                 else {
-				    $request = Invoke-WebRequest -Uri "$URL" -OutFile $DownloadFile
+                    IF ($UserAgent)  {            
+                        $request = Invoke-WebRequest -Uri "$URL" -OutFile $DownloadFile -UserAgent $UserAgent
+                    }
+                    else {
+                        $request = Invoke-WebRequest -Uri "$URL" -OutFile $DownloadFile
+                    }
                 }
 				$request | Out-Null
 				Add-LogContent "Completed Downloading $ApplicationName"
