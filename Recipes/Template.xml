@@ -382,6 +382,10 @@
 		<Supersedence>[Boolean]</Supersedence>
 		<!-- Uninstall previous version before installing the latest -->
 		<Uninstall>[Boolean]</Uninstall>
+		<!-- Move previous versions to named folder -->
+		<ArchiveSuperseded>[Boolean]</ArchiveSuperseded>
+		<!-- FolderPath - [String] The folder path in ConfigMgr where superseded Application should be moved-->
+		<ArchiveFolderPath></ArchiveFolderPath>
 		<!-- Cleanup superseded versions of this application -->
 		<CleanupSuperseded>[Boolean]</CleanupSuperseded>
 		<!-- Keep this many superseded versions of the application -->
