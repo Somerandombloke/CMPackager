@@ -1720,6 +1720,12 @@ Combines the output from Get-ChildItem with the Get-ExtensionAttribute function,
 		param (
 			$Recipe
 		)
+  		If (-not ([string]::IsNullOrEmpty($Recipe.ApplicationDef.Supersedence.ArchiveSuperseded))) {
+			$ArchiveEnabled = [System.Convert]::ToBoolean($Recipe.ApplicationDef.Supersedence.ArchiveSuperseded)
+		}
+		else {
+			$ArchiveEnabled = $false
+		}
 		If (-not ([string]::IsNullOrEmpty($Recipe.ApplicationDef.Supersedence.CleanupSuperseded))) {
 			$CleanupEnabled = [System.Convert]::ToBoolean($Recipe.ApplicationDef.Supersedence.CleanupSuperseded)
 		}
@@ -1729,6 +1735,53 @@ Combines the output from Get-ChildItem with the Get-ExtensionAttribute function,
 		$ApplicationName = $Recipe.ApplicationDef.Application.Name
 		$CleanupEnabled = $Recipe.ApplicationDef.Supersedence.CleanupSuperseded
 		$keep = $Recipe.ApplicationDef.Supersedence.KeepSuperseded
+		$ArchiveFolderPath = $Recipe.ApplicationDef.Supersedence.ArchiveFolderPath		
+
+		Write-Output "Archive is $ArchiveEnabled"
+		if ($ArchiveEnabled) {
+			
+			Push-Location
+			Set-Location $CMSite
+			Write-Output "Archiving superseded revisions of $ApplicationName"
+			$Applications = Get-CMApplication -Name "$ApplicationName*" | Where-Object IsSuperseded -eq $true | Sort-Object DateCreated
+			#TD Removed $Applications = $Applications | Select-Object -First ($Applications.Count - $keep)
+			Add-LogContent "Archiving $ApplicationName $ApplicationSWVersion to $ArchiveFolderPath"
+			ForEach ($Application in $Applications) {
+				# Get the content location and remove it
+				Write-Host "Archiving up $($Application.LocalizedDisplayName)"
+				# Remove the deployments
+				$Application | Get-CMApplicationDeployment | Remove-CMApplicationDeployment -Force
+				# Move the application
+					Try {
+						If (-not ([System.String]::IsNullOrEmpty($ArchiveFolderPath))) {
+							# Create the folder if it does not exist
+							if (-not (Test-Path ".\Application\$ArchiveFolderPath")) {
+								New-Item -ItemType Directory -Path ".\Application\$ArchiveFolderPath" -ErrorAction SilentlyContinue
+							}
+							write-output "Archiving $Application"
+							Move-CMObject -InputObject (Get-CMApplication -Name $Application.LocalizedDisplayName) -FolderPath ".\Application\$ArchiveFolderPath"
+						}
+					}
+					Catch { 
+						$AppCreated = $false
+						$ErrorMessage = $_.Exception.Message
+						$FullyQualified = $_.Exception.FullyQualifiedErrorID
+						Add-LogContent "ERROR: Archived Application Move Failed!"
+						Add-LogContent "ERROR: $ErrorMessage"
+						Add-LogContent "ERROR: $FullyQualified"
+						Add-LogContent "ERROR: $($_.CategoryInfo.Category): $($_.CategoryInfo.Reason)"
+					}
+
+
+
+				## Send an Email if an Application was successfully cleaned up and record the Application Name and Version for the Email
+				$Global:SendEmail = $true; $Global:SendEmail | Out-Null
+				$Global:EmailBody += "      - Archived $($Application.LocalizedDisplayName) `n"
+				Add-LogContent "Archived $($Application.LocalizedDisplayName) $($Application.SoftwareVersion) to $ArchiveFolderPath`n"
+			}
+			Pop-Location
+			
+		}
 
 		Write-Output "Cleanup is $CleanupEnabled"
 		if ($CleanupEnabled) {
@@ -1737,28 +1790,30 @@ Combines the output from Get-ChildItem with the Get-ExtensionAttribute function,
 			Set-Location $CMSite
 			Write-Output "Keeping $Keep superseded revisions of $ApplicationName"
 			$Applications = Get-CMApplication -Name "$ApplicationName*" | Where-Object IsSuperseded -eq $true | Sort-Object DateCreated
-			$Applications = $Applications | Select-Object -First ($Applications.Count - $keep)
-			ForEach ($Application in $Applications) {
-				# Get the content location and remove it
-				Write-Host "Cleaning up $($Application.LocalizedDisplayName)"
-				Pop-Location
-				$ApplicationXML = [Microsoft.ConfigurationManagement.ApplicationManagement.Serialization.SccmSerializer]::DeserializeFromString($Application.SDMPackageXML, $true)
-				$Location = $ApplicationXML.DeploymentTypes[0].Installer.Contents | Select-Object -ExpandProperty Location # BUGBUG: Get all the deployment locations and remove them
-				Remove-Item -LiteralPath $Location -Recurse
-				Add-LogContent "Removed application content from $Location`n"
-				# Remove the deployments and app itself
-				Push-Location
-				Set-Location $CMSite
-				$Application | Get-CMApplicationDeployment | Remove-CMApplicationDeployment -Force
-				Get-CMApplication $Application.LocalizedDisplayName | Remove-CMApplication -Force
-				## Send an Email if an Application was successfully cleaned up and record the Application Name and Version for the Email
-				$Global:SendEmail = $true; $Global:SendEmail | Out-Null
-				$Global:EmailBody += "      - Removed $($Application.LocalizedDisplayName) `n"
-				Add-LogContent "Removed $($Application.LocalizedDisplayName) $($Application.SoftwareVersion)`n"
-			}
+   			if ($Applications.Count -gt $keep){
+				$Applications = $Applications | Select-Object -First ($Applications.Count - $keep)
+				ForEach ($Application in $Applications) {
+					# Get the content location and remove it
+					Write-Host "Cleaning up $($Application.LocalizedDisplayName)"
+					Pop-Location
+					$ApplicationXML = [Microsoft.ConfigurationManagement.ApplicationManagement.Serialization.SccmSerializer]::DeserializeFromString($Application.SDMPackageXML, $true)
+					$Location = $ApplicationXML.DeploymentTypes[0].Installer.Contents | Select-Object -ExpandProperty Location # BUGBUG: Get all the deployment locations and remove them
+					Remove-Item -LiteralPath $Location -Recurse
+					Add-LogContent "Removed application content from $Location`n"
+					# Remove the deployments and app itself
+					Push-Location
+					Set-Location $CMSite
+					$Application | Get-CMApplicationDeployment | Remove-CMApplicationDeployment -Force
+					Get-CMApplication $Application.LocalizedDisplayName | Remove-CMApplication -Force
+					## Send an Email if an Application was successfully cleaned up and record the Application Name and Version for the Email
+					$Global:SendEmail = $true; $Global:SendEmail | Out-Null
+					$Global:EmailBody += "      - Removed $($Application.LocalizedDisplayName) `n"
+					Add-LogContent "Removed $($Application.LocalizedDisplayName) $($Application.SoftwareVersion)`n"
+				}
+    			}
 			Pop-Location
 			
-		}
+			}
 		Write-Output $true
 	}	
 
